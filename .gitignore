@@ -28,6 +28,14 @@ Thumbs.db
 # Logs
 *.log
 
-# Call recordings
+# Output directories
+recordings/
+conversations/
+reports/
+
+# Call recordings (legacy - now in recordings/)
 full_call_*.wav
 recording_*.wav
+conversation_*.json
+transcript_*.json
+flow_test_results_*.json

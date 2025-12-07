@@ -22,12 +22,17 @@ async def handle_voice_webhook(request: Request):
     if not server_url:
         return Response(content="SERVER_URL not set", status_code=500)
 
+    # Get form data from Twilio
+    form_data = await request.form()
+    call_sid = form_data.get("CallSid", "")
+    
     # Extract the host from the SERVER_URL (remove https://)
     host = server_url.replace("https://", "").replace("http://", "")
 
     response = VoiceResponse()
     connect = Connect()
-    connect.stream(url=f"wss://{host}/media-stream")
+    # Pass call_sid as parameter to WebSocket
+    connect.stream(url=f"wss://{host}/media-stream?call_sid={call_sid}")
     response.append(connect)
     
     return Response(content=str(response), media_type="application/xml")
@@ -36,19 +41,26 @@ from audio_processor import AudioProcessor
 from llm_client import LLMClient
 from ai_responder import AIResponder
 from vad_detector import VoiceActivityDetector
+from conversation_flow import CONVERSATION_FLOW
 import wave
 from datetime import datetime
 
 @app.websocket("/media-stream")
 async def handle_media_stream(websocket: WebSocket):
     await websocket.accept()
+    
+    # Get call_sid from query parameters
+    call_sid = websocket.query_params.get("call_sid", "unknown")
+    
     print("=" * 60)
     print("Media Stream Connected - Call Started")
     print("=" * 60)
+    print(f"Call SID: {call_sid}")
     print("\n[LISTENING] Waiting for the clinic AI to speak...")
     
     llm_client = LLMClient()
-    ai_responder = AIResponder()
+    # TODO: Get flow_type from call parameters in future
+    ai_responder = AIResponder(flow_type="booking")  # Default to booking
     vad = VoiceActivityDetector(
         energy_threshold=500,      # Adjust this if needed (higher = less sensitive)
         speech_frames=10,          # 10 frames (~1 second) to start speech
@@ -59,6 +71,7 @@ async def handle_media_stream(websocket: WebSocket):
     full_call_recording = bytearray()  # Records both sides
     stream_sid = None
     conversation_turn = 0
+    conversation_exchanges = []  # Store conversation for validation
     audio_chunks_received = 0
     speech_segments = []
     current_segment = bytearray()
@@ -126,6 +139,14 @@ async def handle_media_stream(websocket: WebSocket):
                                     our_response = await ai_responder.generate_response(clinic_text)
                                     print(f"[US] Saying: {our_response}")
                                     
+                                    # Record this exchange for validation
+                                    conversation_exchanges.append({
+                                        "step": conversation_turn + 1,
+                                        "clinic_said": clinic_text,
+                                        "we_said": our_response,
+                                        "timestamp": datetime.now().isoformat()
+                                    })
+                                    
                                     # Convert to audio and send
                                     response_audio = await llm_client.text_to_speech(our_response)
                                     
@@ -137,7 +158,17 @@ async def handle_media_stream(websocket: WebSocket):
                                     # Check if we should end the call
                                     if any(word in our_response.lower() for word in ["goodbye", "bye", "take care"]):
                                         print(f"\n[ENDING CALL] We said goodbye, ending call...")
+                                        # Send hangup command to Twilio
+                                        await hangup_call(websocket, stream_sid)
                                         break
+                                    
+                                    # Check if we've reached the hangup step in the flow
+                                    if conversation_turn < len(CONVERSATION_FLOW):
+                                        current_flow_step = CONVERSATION_FLOW[conversation_turn]
+                                        if current_flow_step.get("action") == "hangup":
+                                            print(f"\n[FLOW COMPLETE] Reached hangup step, ending call...")
+                                            await hangup_call(websocket, stream_sid)
+                                            break
                                     
                                     # Now we're waiting for them to respond
                                     waiting_for_response = True
@@ -171,10 +202,14 @@ async def handle_media_stream(websocket: WebSocket):
         import traceback
         traceback.print_exc()
     finally:
+        # Create output directories if they don't exist
+        os.makedirs("recordings", exist_ok=True)
+        os.makedirs("conversations", exist_ok=True)
+        
         # Save the full call recording (both sides)
         if len(full_call_recording) > 0:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"full_call_{timestamp}.wav"
+            filename = f"recordings/full_call_{timestamp}.wav"
             
             print(f"\n[SAVING] Full call recording to {filename}...")
             with wave.open(filename, 'wb') as wav_file:
@@ -186,6 +221,14 @@ async def handle_media_stream(websocket: WebSocket):
             print(f"[SAVED] {len(full_call_recording)} bytes saved to {filename}")
             print(f"[INFO] Duration: ~{len(full_call_recording) / 16000:.1f} seconds")
             print(f"[INFO] This recording includes BOTH sides of the conversation")
+        
+        # Save conversation exchanges for validation (use call_sid for consistency)
+        if call_sid and len(conversation_exchanges) > 0:
+            exchanges_filename = f"conversations/conversation_{call_sid}.json"
+            print(f"\n[SAVING] Conversation exchanges to {exchanges_filename}...")
+            with open(exchanges_filename, 'w') as f:
+                json.dump(conversation_exchanges, f, indent=2)
+            print(f"[SAVED] {len(conversation_exchanges)} exchanges saved for validation")
 
 async def send_audio_to_twilio(websocket: WebSocket, pcm_audio: bytes, stream_sid: str):
     """
@@ -232,3 +275,21 @@ async def send_audio_to_twilio(websocket: WebSocket, pcm_audio: bytes, stream_si
     }
     await websocket.send_text(json.dumps(mark_message))
     print(f"[DEBUG] Audio transmission complete")
+
+async def hangup_call(websocket: WebSocket, stream_sid: str):
+    """
+    Sends a stop event to Twilio to hang up the call gracefully.
+    """
+    print(f"[HANGUP] Sending stop event to end call...")
+    
+    stop_message = {
+        "event": "stop",
+        "streamSid": stream_sid
+    }
+    
+    try:
+        await websocket.send_text(json.dumps(stop_message))
+        print(f"[HANGUP] Stop event sent successfully")
+        await asyncio.sleep(0.5)  # Give time for the message to be processed
+    except Exception as e:
+        print(f"[HANGUP] Error sending stop event: {e}")

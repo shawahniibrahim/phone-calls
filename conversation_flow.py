@@ -1,101 +1,112 @@
-# AI-Driven Conversation Flow
-# Define the conversation steps with context-based responses
+# AI-Driven Conversation Flows
+# Define multiple conversation scenarios
 
-CONVERSATION_FLOW = [
-    {
-        "step": 1,
-        "expect": "greeting or asking how they can help",
-        "respond_with": "Say that you want to book an appointment",
-        "example": "I'd like to book an appointment please"
-    },
-    {
-        "step": 2,
-        "expect": "asking if you are new patient",
-        "respond_with": "Yes I am",
-        "example": "Yes, I'm a new patiemt"
-    },
-    {
-        "step": 3,
-        "expect": "asking if the phone number you are calling from is the one to use on your profile",
-        "respond_with": "Yes",
-        "example": "Yes use it"
-    },
-    {
-        "step": 4,
-        "expect": "asking for date of birth",
-        "respond_with": "Provide a date of birth: January 15, 1990",
-        "example": "January 15, 1990"
-    },
-    {
-        "step": 5,
-        "expect": "asking to confirm the date of birth",
-        "respond_with": "Confirm the date of birth",
-        "example": "Yes, that's correct"
-    },
-    {
-        "step": 6,
-        "expect": "asking For your full name",
-        "respond_with": "Provide full name",
-        "example": "Alex Kattan"
-    },
-    {
-        "step":7,
-        "expect":"What kind of appointment are you looking to schedule?",
-        "respond_with":"Provide quick symptoms related to headache and vomit",
-        "example":"I'm having headache and morning vomitting"
-    },
-    {
-        "step":8,
-        "expect":"Confirming your appointment",
-        "respond_with":"Confirm the type of the apointment suggested",
-        "example":"Yes, follow up appointment is good"
-    },
-    {
-        "step": 9,
-        "expect": "asking for preferred date or time",
-        "respond_with": "Say you need it as soon as possible",
-        "example": "The sooner the better"
-    },
-    {
-        "step": 10,
-        "expect": "Suggesting list of available appointments",
-        "respond_with": "Confirm the first matching one",
-        "example": "The first option seems good to me"
-    },
-    {
-        "step": 11,
-        "expect": "Confirming the appointment is booked",
-        "respond_with": "Thank you",
-        "example": "Thank you"
-    },
+# Flow for leaving a message with the clinic
+LEAVE_MESSAGE_FLOW = {
+    "name": "Leave Message",
+    "phone_number": None,  # Will use TARGET_PHONE_NUMBER from .env
+    "timeout": 180,  # 3 minutes should be enough for leaving a message
+    "steps": [
+        {
+            "step": 1,
+            "expect": "greeting or asking how they can help",
+            "respond_with": "Say you want to leave a message",
+            "example": "I'd like to leave a message please",
+            "assertions": [
+                {"type": "step_reached", "description": "Call connected"},
+                {"type": "contains", "value": "message", "description": "Requested to leave message"}
+            ]
+        },
+        {
+            "step": 2,
+            "expect": "asking for your name",
+            "respond_with": "Provide your full name",
+            "example": "Alex Kattan",
+            "assertions": [
+                {"type": "contains", "value": "alex kattan", "description": "Name provided"}
+            ]
+        },
+        {
+            "step": 3,
+            "expect": "asking for callback number",
+            "respond_with": "Provide phone number",
+            "example": "450-233-2096",
+            "assertions": [
+                {"type": "contains", "value": "450", "description": "Phone number provided"}
+            ]
+        },
+        {
+            "step": 4,
+            "expect": "asking what the message is about",
+            "respond_with": "Provide brief message about appointment follow-up",
+            "example": "I need to follow up on my recent appointment",
+            "assertions": [
+                {"type": "contains", "value": "appointment", "description": "Message content provided"}
+            ]
+        },
+        {
+            "step": 5,
+            "expect": "confirming they will pass along the message",
+            "respond_with": "Thank them",
+            "example": "Thank you",
+            "assertions": [
+                {"type": "contains", "value": "thank", "description": "Thanked for taking message"}
+            ]
+        },
+        {
+            "step": 6,
+            "expect": "saying goodbye",
+            "respond_with": "Say goodbye and hang up",
+            "example": "Goodbye",
+            "action": "hangup",
+            "assertions": [
+                {"type": "step_reached", "description": "Call completed and hung up"}
+            ]
+        },
+    ]
+}
+
+# All available flows - ADD YOUR FLOWS HERE
+ALL_FLOWS = [
+    LEAVE_MESSAGE_FLOW,
 ]
 
-# System prompt for the AI to understand its role
-SYSTEM_PROMPT = """You are an AI assistant making a phone call to book a medical appointment.
+# For backward compatibility with server.py
+CONVERSATION_FLOW = LEAVE_MESSAGE_FLOW["steps"]
+AVAILABLE_FLOWS = {
+    "leave_message": LEAVE_MESSAGE_FLOW["steps"],
+}
+
+# System prompt
+LEAVE_MESSAGE_PROMPT = """You are an AI assistant making a phone call to leave a message with a medical clinic.
 
 CRITICAL RULES:
 - ONLY answer the EXACT question they asked
 - Do NOT volunteer additional information
-- Do NOT provide information before being asked
 - Keep responses EXTREMELY brief (1 sentence, 5-7 words max)
-- Wait for them to ask before providing ANY details
 - Be polite and natural
 - If they say "give me a sec" or are thinking, DO NOT respond
 
-Patient Information to use ONLY when specifically asked:
+Information to use ONLY when specifically asked:
 - Name: Alex Kattan
-- Date of Birth: January 15, 1990
 - Phone: 450-233-2096
-- Reason: Headaches and morning vomiting
-- Preferred time: Earliest available
+- Message: Need to follow up on recent appointment
 
 Examples of CORRECT responses:
-- They ask "How can I help?" → You say "I'd like to book an appointment"
+- They ask "How can I help?" → You say "I'd like to leave a message"
 - They ask "What's your name?" → You say "Alex Kattan"
-- They ask "Date of birth?" → You say "January 15, 1990"
-- They ask "What kind of appointment?" → You say "For headaches and vomiting"
+- They ask "Callback number?" → You say "450-233-2096"
+- They ask "What's the message?" → You say "I need to follow up on my recent appointment"
 
 Examples of WRONG responses (DO NOT DO THIS):
-- They ask "What's your name?" → DO NOT say "Alex Kattan, and my date of birth is..."
-- They ask "How can I help?" → DO NOT say "I'd like to book an appointment, my name is..."
+- They ask "What's your name?" → DO NOT say "Alex Kattan, my number is..."
+- They ask "How can I help?" → DO NOT say "I'd like to leave a message, my name is..."
 """
+
+# System prompts mapping
+SYSTEM_PROMPTS = {
+    "leave_message": LEAVE_MESSAGE_PROMPT,
+}
+
+# Default prompt (for backward compatibility)
+SYSTEM_PROMPT = LEAVE_MESSAGE_PROMPT

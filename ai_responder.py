@@ -1,5 +1,5 @@
 from llm_client import LLMClient
-from conversation_flow import CONVERSATION_FLOW, SYSTEM_PROMPT
+from conversation_flow import AVAILABLE_FLOWS, SYSTEM_PROMPTS, CONVERSATION_FLOW, SYSTEM_PROMPT
 
 class AIResponder:
     """
@@ -7,10 +7,19 @@ class AIResponder:
     Uses the conversation flow as guidance but allows natural variation.
     """
     
-    def __init__(self):
+    def __init__(self, flow_type: str = "booking"):
+        """
+        Initialize the AI responder with a specific flow type.
+        
+        Args:
+            flow_type: Type of conversation flow (booking, cancellation, inquiry)
+        """
         self.llm_client = LLMClient()
+        self.flow_type = flow_type
+        self.flow = AVAILABLE_FLOWS.get(flow_type, CONVERSATION_FLOW)
+        self.system_prompt = SYSTEM_PROMPTS.get(flow_type, SYSTEM_PROMPT)
         self.conversation_history = [
-            {"role": "system", "content": SYSTEM_PROMPT}
+            {"role": "system", "content": self.system_prompt}
         ]
         self.current_step = 0
     
@@ -32,8 +41,8 @@ class AIResponder:
         
         # Get the current step guidance (if available)
         guidance = ""
-        if self.current_step < len(CONVERSATION_FLOW):
-            step = CONVERSATION_FLOW[self.current_step]
+        if self.current_step < len(self.flow):
+            step = self.flow[self.current_step]
             guidance = f"\n\nCurrent step guidance:\n- They might be: {step['expect']}\n- You should: {step['respond_with']}\n- Example: {step['example']}"
         
         # Create the prompt for generating response
@@ -71,6 +80,6 @@ Generate ONLY your response, nothing else."""
     def reset(self):
         """Reset the conversation state."""
         self.conversation_history = [
-            {"role": "system", "content": SYSTEM_PROMPT}
+            {"role": "system", "content": self.system_prompt}
         ]
         self.current_step = 0
