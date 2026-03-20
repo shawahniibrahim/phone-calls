@@ -1,112 +1,76 @@
-# AI-Driven Conversation Flows
-# Define multiple conversation scenarios
+"""
+Conversation Flow Registry
 
-# Flow for leaving a message with the clinic
-LEAVE_MESSAGE_FLOW = {
-    "name": "Leave Message",
-    "phone_number": None,  # Will use TARGET_PHONE_NUMBER from .env
-    "timeout": 180,  # 3 minutes should be enough for leaving a message
-    "steps": [
-        {
-            "step": 1,
-            "expect": "greeting or asking how they can help",
-            "respond_with": "Say you want to leave a message",
-            "example": "I'd like to leave a message please",
-            "assertions": [
-                {"type": "step_reached", "description": "Call connected"},
-                {"type": "contains", "value": "message", "description": "Requested to leave message"}
-            ]
-        },
-        {
-            "step": 2,
-            "expect": "asking for your name",
-            "respond_with": "Provide your full name",
-            "example": "Alex Kattan",
-            "assertions": [
-                {"type": "contains", "value": "alex kattan", "description": "Name provided"}
-            ]
-        },
-        {
-            "step": 3,
-            "expect": "asking for callback number",
-            "respond_with": "Provide phone number",
-            "example": "450-233-2096",
-            "assertions": [
-                {"type": "contains", "value": "450", "description": "Phone number provided"}
-            ]
-        },
-        {
-            "step": 4,
-            "expect": "asking what the message is about",
-            "respond_with": "Provide brief message about appointment follow-up",
-            "example": "I need to follow up on my recent appointment",
-            "assertions": [
-                {"type": "contains", "value": "appointment", "description": "Message content provided"}
-            ]
-        },
-        {
-            "step": 5,
-            "expect": "confirming they will pass along the message",
-            "respond_with": "Thank them",
-            "example": "Thank you",
-            "assertions": [
-                {"type": "contains", "value": "thank", "description": "Thanked for taking message"}
-            ]
-        },
-        {
-            "step": 6,
-            "expect": "saying goodbye",
-            "respond_with": "Say goodbye and hang up",
-            "example": "Goodbye",
-            "action": "hangup",
-            "assertions": [
-                {"type": "step_reached", "description": "Call completed and hung up"}
-            ]
-        },
-    ]
-}
+This file automatically imports all flows from the flows/ directory.
+You don't need to edit this file - just add new flow files to flows/
 
-# All available flows - ADD YOUR FLOWS HERE
-ALL_FLOWS = [
-    LEAVE_MESSAGE_FLOW,
-]
-
-# For backward compatibility with server.py
-CONVERSATION_FLOW = LEAVE_MESSAGE_FLOW["steps"]
-AVAILABLE_FLOWS = {
-    "leave_message": LEAVE_MESSAGE_FLOW["steps"],
-}
-
-# System prompt
-LEAVE_MESSAGE_PROMPT = """You are an AI assistant making a phone call to leave a message with a medical clinic.
-
-CRITICAL RULES:
-- ONLY answer the EXACT question they asked
-- Do NOT volunteer additional information
-- Keep responses EXTREMELY brief (1 sentence, 5-7 words max)
-- Be polite and natural
-- If they say "give me a sec" or are thinking, DO NOT respond
-
-Information to use ONLY when specifically asked:
-- Name: Alex Kattan
-- Phone: 450-233-2096
-- Message: Need to follow up on recent appointment
-
-Examples of CORRECT responses:
-- They ask "How can I help?" → You say "I'd like to leave a message"
-- They ask "What's your name?" → You say "Alex Kattan"
-- They ask "Callback number?" → You say "450-233-2096"
-- They ask "What's the message?" → You say "I need to follow up on my recent appointment"
-
-Examples of WRONG responses (DO NOT DO THIS):
-- They ask "What's your name?" → DO NOT say "Alex Kattan, my number is..."
-- They ask "How can I help?" → DO NOT say "I'd like to leave a message, my name is..."
+To add a new flow:
+1. Copy flows/_template_flow.py to flows/your_flow_name.py
+2. Edit your new flow file
+3. It will be automatically imported!
 """
 
-# System prompts mapping
-SYSTEM_PROMPTS = {
-    "leave_message": LEAVE_MESSAGE_PROMPT,
-}
+import os
+import importlib
+from pathlib import Path
 
-# Default prompt (for backward compatibility)
-SYSTEM_PROMPT = LEAVE_MESSAGE_PROMPT
+# Auto-discover and import all flow files
+ALL_FLOWS = []
+AVAILABLE_FLOWS = {}
+SYSTEM_PROMPTS = {}
+
+# Get the flows directory
+flows_dir = Path(__file__).parent / "flows"
+
+# Import all Python files in the flows directory (except __init__.py and templates)
+if flows_dir.exists():
+    for flow_file in flows_dir.glob("*.py"):
+        # Skip __init__.py and template files
+        if flow_file.name.startswith("_"):
+            continue
+
+        # Import the module
+        module_name = flow_file.stem
+        try:
+            module = importlib.import_module(f"flows.{module_name}")
+
+            # Check if module has required attributes
+            if (
+                hasattr(module, "FLOW")
+                and hasattr(module, "SYSTEM_PROMPT")
+                and hasattr(module, "FLOW_ID")
+            ):
+                flow = module.FLOW
+                flow_id = module.FLOW_ID
+                system_prompt = module.SYSTEM_PROMPT
+
+                # Add to registries
+                ALL_FLOWS.append(flow)
+                AVAILABLE_FLOWS[flow_id] = flow["steps"]
+                SYSTEM_PROMPTS[flow_id] = system_prompt
+
+                print(f"✓ Loaded flow: {flow['name']} (ID: {flow_id})")
+            else:
+                print(
+                    f"⚠ Skipped {module_name}: Missing FLOW, SYSTEM_PROMPT, or FLOW_ID"
+                )
+        except Exception as e:
+            print(f"✗ Error loading {module_name}: {e}")
+
+# For backward compatibility with server.py
+# Use the first flow as default if available
+if ALL_FLOWS:
+    CONVERSATION_FLOW = ALL_FLOWS[0]["steps"]
+    SYSTEM_PROMPT = list(SYSTEM_PROMPTS.values())[0]
+else:
+    print("⚠ WARNING: No flows found in flows/ directory!")
+    CONVERSATION_FLOW = []
+    SYSTEM_PROMPT = ""
+
+# Print summary
+print(f"\n{'='*60}")
+print(f"Conversation Flow Registry Loaded")
+print(f"{'='*60}")
+print(f"Total flows loaded: {len(ALL_FLOWS)}")
+print(f"Available flow IDs: {list(AVAILABLE_FLOWS.keys())}")
+print(f"{'='*60}\n")
