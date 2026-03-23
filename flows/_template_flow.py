@@ -5,10 +5,19 @@ Instructions:
 1. Copy this file: cp flows/_template_flow.py flows/your_flow_name.py
 2. Update the docstring above
 3. Define your FLOW dictionary
-4. Write your SYSTEM_PROMPT
+4. Define caller facts and any extra instructions
 5. Set a unique FLOW_ID
 6. The flow will be automatically imported!
+
+Each step represents one exchange:
+- `expect`: what the clinic says in that exchange
+- `respond_with` / `example`: what our caller says back in that same exchange
+- `clinic_assertions`: validations against `clinic_said`
+- `our_assertions`: validations against `we_said`
+- `assertions`: general validations like `step_reached`
 """
+
+from prompt_builder import build_system_prompt
 
 FLOW = {
     "name": "Your Flow Name",
@@ -20,13 +29,22 @@ FLOW = {
             "expect": "what you expect the other party to say",
             "respond_with": "instruction for AI on how to respond",
             "example": "example of what the AI should say",
-            "assertions": [
-                {"type": "step_reached", "description": "Step 1 completed"},
+            "clinic_assertions": [
                 {
                     "type": "contains",
-                    "value": "keyword",
-                    "description": "Keyword mentioned",
+                    "value": "keyword from the clinic side",
+                    "description": "Clinic said the expected thing",
                 },
+            ],
+            "our_assertions": [
+                {
+                    "type": "contains",
+                    "value": "keyword from our side",
+                    "description": "Caller replied as expected",
+                },
+            ],
+            "assertions": [
+                {"type": "step_reached", "description": "Step 1 exchange completed"},
             ],
         },
         {
@@ -34,8 +52,19 @@ FLOW = {
             "expect": "next expected response",
             "respond_with": "how to respond",
             "example": "example response",
-            "assertions": [
-                {"type": "contains", "value": "something", "description": "Validation"}
+            "clinic_assertions": [
+                {
+                    "type": "contains",
+                    "value": "something from the clinic",
+                    "description": "Clinic-side validation",
+                },
+            ],
+            "our_assertions": [
+                {
+                    "type": "contains",
+                    "value": "something from us",
+                    "description": "Caller-side validation",
+                },
             ],
         },
         # Add more steps as needed...
@@ -50,22 +79,22 @@ FLOW = {
     ],
 }
 
-SYSTEM_PROMPT = """You are an AI assistant making a phone call for [PURPOSE].
+CALLER_FACTS = [
+    "Name: [NAME]",
+    "Phone: [PHONE]",
+    "Other important info: [INFO]",
+]
 
-CRITICAL RULES:
-- ONLY answer the EXACT question they asked
-- Do NOT volunteer additional information
-- Keep responses EXTREMELY brief (1 sentence, 5-7 words max)
-- Be polite and natural
+CUSTOM_INSTRUCTIONS = [
+    "Open with [OPENING LINE].",
+    "Keep the call moving one answer at a time.",
+]
 
-Information to use ONLY when specifically asked:
-- Name: [NAME]
-- Phone: [PHONE]
-- Other info: [INFO]
-
-Examples of CORRECT responses:
-- They ask "X?" → You say "Y"
-"""
+SYSTEM_PROMPT = build_system_prompt(
+    objective="[PURPOSE OF THE CALL]",
+    caller_facts=CALLER_FACTS,
+    custom_instructions=CUSTOM_INSTRUCTIONS,
+)
 
 # Flow identifier - MUST be unique across all flows
 FLOW_ID = "your_unique_flow_id"

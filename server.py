@@ -26,14 +26,18 @@ async def handle_voice_webhook(request: Request):
     # Get form data from Twilio
     form_data = await request.form()
     call_sid = form_data.get("CallSid", "")
+    flow_type = request.query_params.get("flow_type", "")
 
     # Extract the host from the SERVER_URL (remove https://)
     host = server_url.replace("https://", "").replace("http://", "")
 
     response = VoiceResponse()
     connect = Connect()
-    # Pass call_sid as parameter to WebSocket
-    connect.stream(url=f"wss://{host}/media-stream?call_sid={call_sid}")
+    stream = connect.stream(url=f"wss://{host}/media-stream")
+    if call_sid:
+        stream.parameter(name="call_sid", value=call_sid)
+    if flow_type:
+        stream.parameter(name="flow_type", value=flow_type)
     response.append(connect)
 
     return Response(content=str(response), media_type="application/xml")
@@ -52,18 +56,20 @@ from datetime import datetime
 async def handle_media_stream(websocket: WebSocket):
     await websocket.accept()
 
-    # Get call_sid from query parameters
-    call_sid = websocket.query_params.get("call_sid", "unknown")
+    # Twilio sends custom metadata in the "start" event for Media Streams.
+    call_sid = "unknown"
+    flow_type = "leave_message"
 
     print("=" * 60)
     print("Media Stream Connected - Call Started")
     print("=" * 60)
     print(f"Call SID: {call_sid}")
+    print(f"Flow Type: {flow_type}")
     print("\n[LISTENING] Waiting for the clinic AI to speak...")
 
     llm_client = LLMClient()
-    # TODO: Get flow_type from call parameters in future
-    ai_responder = AIResponder(flow_type="leave_message")  # Match conversation_flow.py
+    ai_responder = None
+    active_flow = []
     vad = VoiceActivityDetector(
         energy_threshold=500,  # Adjust this if needed (higher = less sensitive)
         speech_frames=10,  # 10 frames (~1 second) to start speech
@@ -91,8 +97,16 @@ async def handle_media_stream(websocket: WebSocket):
                 data = json.loads(message)
 
                 if data["event"] == "start":
-                    stream_sid = data["start"]["streamSid"]
+                    start_data = data["start"]
+                    stream_sid = start_data["streamSid"]
+                    call_sid = start_data.get("callSid", call_sid)
+                    custom_parameters = start_data.get("customParameters", {})
+                    flow_type = custom_parameters.get("flow_type", flow_type)
+                    ai_responder = AIResponder(flow_type=flow_type)
+                    active_flow = ai_responder.flow
                     print(f"Stream started: {stream_sid}")
+                    print(f"Resolved Call SID: {call_sid}")
+                    print(f"Resolved Flow Type: {flow_type}")
 
                 elif data["event"] == "media":
                     # Receive incoming audio from the clinic AI
@@ -143,6 +157,12 @@ async def handle_media_stream(websocket: WebSocket):
                                     len(current_segment) > 16000
                                     and not waiting_for_response
                                 ):  # At least 1 second
+                                    if ai_responder is None:
+                                        print("[SKIPPED] Flow not initialized yet")
+                                        current_segment.clear()
+                                        last_high_energy_time = None
+                                        continue
+
                                     print(
                                         f"\n[CLINIC AI] Transcribing {len(current_segment)} bytes..."
                                     )
@@ -207,8 +227,8 @@ async def handle_media_stream(websocket: WebSocket):
                                         break
 
                                     # Check if we've reached the hangup step in the flow
-                                    if conversation_turn < len(CONVERSATION_FLOW):
-                                        current_flow_step = CONVERSATION_FLOW[
+                                    if conversation_turn < len(active_flow):
+                                        current_flow_step = active_flow[
                                             conversation_turn
                                         ]
                                         if current_flow_step.get("action") == "hangup":
@@ -258,13 +278,14 @@ async def handle_media_stream(websocket: WebSocket):
         traceback.print_exc()
     finally:
         # Create output directories if they don't exist
-        os.makedirs("recordings", exist_ok=True)
+        os.makedirs("reports/recordings", exist_ok=True)
         os.makedirs("conversations", exist_ok=True)
 
         # Save the full call recording (both sides)
         if len(full_call_recording) > 0:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"recordings/full_call_{timestamp}.wav"
+            call_token = call_sid if call_sid and call_sid != "unknown" else "unknown"
+            filename = f"reports/recordings/full_call_{call_token}_{timestamp}.wav"
 
             print(f"\n[SAVING] Full call recording to {filename}...")
             with wave.open(filename, "wb") as wav_file:

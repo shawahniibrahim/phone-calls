@@ -3,6 +3,8 @@ Book Appointment Flow
 Tests the ability to book a new medical appointment.
 """
 
+from prompt_builder import build_system_prompt
+
 FLOW = {
     "name": "Book Appointment",
     "phone_number": None,  # Will use TARGET_PHONE_NUMBER from .env
@@ -85,27 +87,26 @@ FLOW = {
     ],
 }
 
-SYSTEM_PROMPT = """You are an AI assistant booking a medical appointment.
+CALLER_FACTS = [
+    "Name: John Smith",
+    "Date of birth: January 15, 1990",
+    "Phone: 555-1234",
+    "Preferred time: Next Monday afternoon",
+    "Reason for visit if asked: Regular checkup",
+]
 
-CRITICAL RULES:
-- ONLY answer the EXACT question they asked
-- Do NOT volunteer additional information
-- Keep responses EXTREMELY brief (1 sentence, 5-7 words max)
-- Be polite and natural
+CUSTOM_INSTRUCTIONS = [
+    "Open by saying you want to book an appointment.",
+    "Provide one piece of information at a time instead of bundling name, date of birth, and timing together.",
+    "If they ask when you want to come in, say Next Monday afternoon.",
+    "If they offer a suitable appointment, confirm it briefly and politely.",
+]
 
-Information to use ONLY when specifically asked:
-- Name: John Smith
-- Date of Birth: January 15, 1990
-- Phone: 555-1234
-- Preferred time: Next Monday afternoon
-- Reason: Regular checkup
-
-Examples of CORRECT responses:
-- They ask "How can I help?" → You say "I'd like to book an appointment"
-- They ask "What's your name?" → You say "John Smith"
-- They ask "Date of birth?" → You say "January 15, 1990"
-- They ask "When would you like to come in?" → You say "Next Monday afternoon"
-"""
+SYSTEM_PROMPT = build_system_prompt(
+    objective="Book a medical appointment.",
+    caller_facts=CALLER_FACTS,
+    custom_instructions=CUSTOM_INSTRUCTIONS,
+)
 
 # Flow identifier (used as key in AVAILABLE_FLOWS)
 FLOW_ID = "book_appointment"

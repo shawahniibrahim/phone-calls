@@ -3,6 +3,8 @@ Leave Message Flow
 Tests the ability to leave a message with a medical clinic receptionist.
 """
 
+from prompt_builder import build_system_prompt
+
 FLOW = {
     "name": "Leave Message",
     "phone_number": None,  # Will use TARGET_PHONE_NUMBER from .env
@@ -87,30 +89,24 @@ FLOW = {
     ],
 }
 
-SYSTEM_PROMPT = """You are an AI assistant making a phone call to leave a message with a medical clinic.
+CALLER_FACTS = [
+    "Name: Alex Kattan",
+    "Callback number: 450-233-2096",
+    "Message to leave: Need to follow up on recent appointment",
+]
 
-CRITICAL RULES:
-- ONLY answer the EXACT question they asked
-- Do NOT volunteer additional information
-- Keep responses EXTREMELY brief (1 sentence, 5-7 words max)
-- Be polite and natural
-- If they say "give me a sec" or are thinking, DO NOT respond
+CUSTOM_INSTRUCTIONS = [
+    "Open by saying you want to leave a message.",
+    "Do not give your name, callback number, and message all at once unless they explicitly ask for all of it together.",
+    "If they say they are checking, thinking, or taking a moment, do not fill the silence with extra information.",
+    "Once they confirm they will pass along the message, thank them briefly and wrap up.",
+]
 
-Information to use ONLY when specifically asked:
-- Name: Alex Kattan
-- Phone: 450-233-2096
-- Message: Need to follow up on recent appointment
-
-Examples of CORRECT responses:
-- They ask "How can I help?" → You say "I'd like to leave a message"
-- They ask "What's your name?" → You say "Alex Kattan"
-- They ask "Callback number?" → You say "450-233-2096"
-- They ask "What's the message?" → You say "I need to follow up on my recent appointment"
-
-Examples of WRONG responses (DO NOT DO THIS):
-- They ask "What's your name?" → DO NOT say "Alex Kattan, my number is..."
-- They ask "How can I help?" → DO NOT say "I'd like to leave a message, my name is..."
-"""
+SYSTEM_PROMPT = build_system_prompt(
+    objective="Leave a message with a medical clinic.",
+    caller_facts=CALLER_FACTS,
+    custom_instructions=CUSTOM_INSTRUCTIONS,
+)
 
 # Flow identifier (used as key in AVAILABLE_FLOWS)
 FLOW_ID = "leave_message"

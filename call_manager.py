@@ -1,6 +1,7 @@
 import os
 from twilio.rest import Client
 from dotenv import load_dotenv
+from urllib.parse import urlencode
 
 load_dotenv()
 
@@ -16,17 +17,25 @@ class CallManager:
 
         self.client = Client(self.account_sid, self.auth_token)
 
-    def make_call(self, to_number: str):
+    def make_call(self, to_number: str, flow_type: str | None = None):
         """
         Initiates a call to the specified number.
         The 'url' parameter points to our FastAPI /voice endpoint.
         """
+        voice_url = f"{self.server_url}/voice"
+        if flow_type:
+            voice_url = f"{voice_url}?{urlencode({'flow_type': flow_type})}"
+
         call = self.client.calls.create(
             to=to_number,
             from_=self.from_number,
-            url=f"{self.server_url}/voice"
+            url=voice_url
         )
         return call.sid
+
+    def get_call_status(self, call_sid: str) -> str:
+        """Fetch the latest Twilio status for a call."""
+        return self.client.calls(call_sid).fetch().status
 
 if __name__ == "__main__":
     # Test usage

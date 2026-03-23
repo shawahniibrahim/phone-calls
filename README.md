@@ -29,7 +29,7 @@ flowchart LR
     H --> I["ai_responder.py"]
     I --> J["llm_client.py generate_response() + text_to_speech()"]
     J --> F
-    F --> K["conversations/ + recordings/"]
+    F --> K["conversations/ + reports/recordings/"]
     A --> L["flow_runner.py"]
     L --> M["flow_validator.py"]
     K --> M
@@ -40,10 +40,12 @@ flowchart LR
 ## Core Files
 
 - `run.py`: Starts ngrok, sets `SERVER_URL`, and launches the FastAPI app.
+- `run_flow.py`: Runs a single flow by `flow_id` and can optionally clear prior reports first.
 - `server.py`: Exposes `/voice` for Twilio webhook traffic and `/media-stream` for the live bidirectional audio loop.
 - `call_manager.py`: Wraps the Twilio REST client and creates outbound calls.
 - `llm_client.py`: Wraps OpenAI APIs for transcription, chat response generation, and text-to-speech.
 - `ai_responder.py`: Holds conversation history and produces the next reply using the selected flow.
+- `prompt_builder.py`: Builds the shared system prompt for a live, two-way phone call and appends flow-specific instructions.
 - `audio_processor.py`: Converts mulaw to PCM, PCM to mulaw, and resamples TTS output to 8 kHz.
 - `vad_detector.py`: Energy-based voice activity detection.
 - `conversation_flow.py`: Auto-discovers flow files from `flows/` and builds the flow registry.
@@ -69,12 +71,16 @@ flowchart LR
 Each flow file under `flows/` must define:
 
 - `FLOW`: The flow metadata and step list
-- `SYSTEM_PROMPT`: The rules and persona for the AI
+- `SYSTEM_PROMPT`: The final prompt used by the AI
 - `FLOW_ID`: The identifier used by the flow registry
+
+In practice, flows should build `SYSTEM_PROMPT` from the shared prompt builder and only supply scenario-specific caller facts and extra instructions.
 
 Example:
 
 ```python
+from prompt_builder import build_system_prompt
+
 FLOW = {
     "name": "Leave Message",
     "phone_number": None,
@@ -85,15 +91,41 @@ FLOW = {
             "expect": "greeting or asking how they can help",
             "respond_with": "Say you want to leave a message",
             "example": "I'd like to leave a message please",
+            "clinic_assertions": [
+                {
+                    "type": "contains_any",
+                    "value": ["how can i help", "help you today"],
+                    "description": "Clinic asked how they can help",
+                }
+            ],
+            "our_assertions": [
+                {
+                    "type": "contains",
+                    "value": "message",
+                    "description": "Caller requested to leave a message",
+                }
+            ],
             "assertions": [
                 {"type": "step_reached", "description": "Call connected"},
-                {"type": "contains", "value": "message", "description": "Requested to leave message"},
             ],
         },
     ],
 }
 
-SYSTEM_PROMPT = """You are an AI assistant making a phone call..."""
+CALLER_FACTS = [
+    "Name: Alex Kattan",
+    "Callback number: 450-233-2096",
+]
+
+CUSTOM_INSTRUCTIONS = [
+    "Open by saying you want to leave a message.",
+]
+
+SYSTEM_PROMPT = build_system_prompt(
+    objective="Leave a message with a medical clinic.",
+    caller_facts=CALLER_FACTS,
+    custom_instructions=CUSTOM_INSTRUCTIONS,
+)
 
 FLOW_ID = "leave_message"
 ```
@@ -101,18 +133,23 @@ FLOW_ID = "leave_message"
 ### Step Fields
 
 - `step`: Step number
-- `expect`: What the other side is expected to say
-- `respond_with`: Instruction for the AI's next reply
+- `expect`: What the clinic is expected to say in that exchange
+- `respond_with`: Instruction for the AI's reply in that same exchange
 - `example`: Example wording for that reply
+- `clinic_assertions`: Optional validations against `clinic_said`
+- `our_assertions`: Optional validations against `we_said`
 - `action`: Optional special action such as `hangup`
-- `assertions`: Optional list of validations for that step
+- `assertions`: Optional general validations for that exchange, such as `step_reached`
 
 ### Assertion Types
 
 - `step_reached`: Passes if the recorded conversation reached that step number
-- `contains`: Passes if the combined text of `clinic_said` and `we_said` contains the expected value
-- `not_contains`: Passes if the combined text does not contain the expected value
+- `contains`: Passes if the targeted text contains the expected value
+- `contains_any`: Passes if the targeted text contains at least one expected value
+- `not_contains`: Passes if the targeted text does not contain the expected value
 - `matches`: Fuzzy keyword check that currently requires about 70% keyword overlap
+
+If you use `clinic_assertions` or `our_assertions`, the target is implied automatically. Flat `assertions` can still be used for exchange-level checks or explicit `target` values.
 
 ## Current Flows
 
@@ -194,6 +231,16 @@ python3 demo_call.py
 
 This uses `TARGET_PHONE_NUMBER` from `.env`.
 
+### Run One Specific Flow
+
+```bash
+python3 run_flow.py --list
+python3 run_flow.py tampa_faq
+python3 run_flow.py tampa_faq --clear-reports
+```
+
+Use `--clear-reports` when you want the contents of `reports/` wiped before the next run.
+
 ### Run The Whole Test Suite
 
 ```bash
@@ -206,9 +253,12 @@ This loads every flow from `conversation_flow.py`, places each call, waits for t
 
 During real runs, the application creates:
 
-- `recordings/full_call_<timestamp>.wav`
+- `reports/recordings/full_call_<call_sid>_<timestamp>.wav`
 - `conversations/conversation_<call_sid>.json`
 - `reports/transcript_<flow_name>_<timestamp>.json`
+- `reports/calls/<timestamp>_<flow_id>_<call_sid>.html`
+- `reports/calls/<timestamp>_<flow_id>_<call_sid>.json`
+- `reports/index.html`
 - `reports/flow_test_results_<timestamp>.json`
 
 These directories are ignored by Git and can be deleted safely.
@@ -217,9 +267,9 @@ These directories are ignored by Git and can be deleted safely.
 
 These details matter when reading or extending the code:
 
-- `server.py` currently hard-codes `AIResponder(flow_type="leave_message")`.
-- The hangup check in `server.py` uses the global `CONVERSATION_FLOW` imported from `conversation_flow.py`, which is the first auto-loaded flow, not necessarily the responder flow.
-- `flow_runner.py` waits for the full timeout and then reads conversation logs; it does not currently stop early when a call completes.
+- `run_flow.py` can target a single flow without loading the full registry output, which keeps one-off runs much cleaner.
+- `flow_runner.py` now writes per-call HTML and JSON reports and builds a browsable `reports/index.html`.
+- The HTML reports use relative links so the entire `reports/` directory can be zipped and shared as a portable bundle.
 - `flows/new_patient_booking_flow.py` generates random patient data at import time.
 - Assertions are checked against the combined text of both sides of each exchange, not only the AI response.
 

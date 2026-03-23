@@ -5,7 +5,8 @@ Includes patient registration and appointment scheduling.
 """
 
 import random
-from datetime import datetime
+
+from prompt_builder import build_system_prompt
 
 
 # Generate random patient data for each test run
@@ -228,75 +229,35 @@ FLOW = {
     ],
 }
 
-SYSTEM_PROMPT = f"""You are an AI assistant calling Modmed Test clinic to book an appointment as a NEW PATIENT.
+CALLER_FACTS = [
+    f"Full name: {PATIENT_DATA['full_name']}",
+    'Date of birth: June 1, 2000. Say it as: "June first two thousand".',
+    "Sex assigned at birth: Male",
+    f'Phone number: {PATIENT_DATA["phone_number"]}. Say it as: "{PATIENT_DATA["phone_spoken"]}".',
+    f'Email: {PATIENT_DATA["email"]}. Say it as: "{PATIENT_DATA["email_spoken"]}".',
+    "Patient type: New patient",
+    "Insurance choice: No, continue without insurance",
+    "Appointment type to choose: New patient",
+    "Preferred date: Tomorrow",
+    "Time selection rule: choose the first available option",
+]
 
-CRITICAL RULES:
-- ONLY answer the EXACT question they asked
-- Do NOT volunteer additional information
-- Keep responses EXTREMELY brief (1-2 sentences max, 5-10 words ideal)
-- Be polite and natural
-- If they say "one moment" or "checking", just wait silently
-- If they ask "are you still there?", just say "Yes" or "Yes, I'm here"
+CUSTOM_INSTRUCTIONS = [
+    "This call includes new-patient registration before scheduling, so answer registration questions one at a time.",
+    "Open by saying you want to book an appointment.",
+    "If they ask whether you are a new or existing patient, say New patient.",
+    'If they ask whether you want to add insurance, say "No".',
+    'If they ask whether you are still there, say "Yes" or "Yes, I\'m here."',
+    'If they ask which appointment type you want, choose "New patient."',
+    "If they present time slots, choose the first available option.",
+    'If they ask whether you need anything else, say "Thank you, that\'s all."',
+]
 
-PATIENT INFORMATION (use ONLY when specifically asked):
-- Full Name: {PATIENT_DATA['full_name']}
-- Date of Birth: June 1, 2000 (say: "June first two thousand")
-- Sex: Male
-- Phone: {PATIENT_DATA['phone_number']} (say: "{PATIENT_DATA['phone_spoken']}")
-- Email: {PATIENT_DATA['email']} (say: "{PATIENT_DATA['email_spoken']}")
-- Patient Type: NEW PATIENT
-- Insurance: No (decline insurance)
-- Appointment Type: New Patient
-- Preferred Date: Tomorrow
-- Time Preference: First available option
-
-CONVERSATION FLOW:
-1. They greet → Say "I want to book an appointment"
-2. New or existing? → Say "New patient"
-3. Full name? → Say "{PATIENT_DATA['full_name']}"
-4. Date of birth? → Say "June first two thousand"
-5. Sex? → Say "Male"
-6. Phone number? → Say "{PATIENT_DATA['phone_spoken']}"
-7. Email? → Say "{PATIENT_DATA['email_spoken']}"
-8. Insurance? → Say "No"
-9. Still there? → Say "Yes" (if asked)
-10. Appointment type? → Say "New patient"
-11. When? → Say "Tomorrow"
-12. Which time? → Say "Go with the first option" or "First option"
-13. Anything else? → Say "Thank you, that's all"
-14. Goodbye → Say "Goodbye"
-
-EXAMPLES OF CORRECT RESPONSES:
-- "How can I help?" → "I want to book an appointment"
-- "New or existing?" → "New patient"
-- "Your name?" → "{PATIENT_DATA['full_name']}"
-- "Date of birth?" → "June first two thousand"
-- "Sex?" → "Male"
-- "Phone number?" → "{PATIENT_DATA['phone_spoken']}"
-- "Email?" → "{PATIENT_DATA['email_spoken']}"
-- "Add insurance?" → "No"
-- "Are you still there?" → "Yes"
-- "Which appointment type?" → "New patient"
-- "When would you like?" → "Tomorrow"
-- "Which time slot?" → "First option"
-- "Anything else?" → "Thank you, that's all"
-
-EXAMPLES OF WRONG RESPONSES (DO NOT DO THIS):
-- "Your name?" → DO NOT say "{PATIENT_DATA['full_name']}, my date of birth is..."
-- "How can I help?" → DO NOT say "I want to book an appointment, I'm a new patient..."
-- Just answer what they ask, nothing more!
-"""
+SYSTEM_PROMPT = build_system_prompt(
+    objective="Book an appointment as a new patient with Modmed Test clinic.",
+    caller_facts=CALLER_FACTS,
+    custom_instructions=CUSTOM_INSTRUCTIONS,
+)
 
 # Flow identifier (used as key in AVAILABLE_FLOWS)
 FLOW_ID = "new_patient_booking"
-
-# Print patient data for reference when flow loads
-print(f"\n{'='*60}")
-print(f"New Patient Booking Flow - Generated Patient Data:")
-print(f"{'='*60}")
-print(f"Name: {PATIENT_DATA['full_name']}")
-print(f"Phone: {PATIENT_DATA['phone_number']} (say: {PATIENT_DATA['phone_spoken']})")
-print(f"Email: {PATIENT_DATA['email']} (say: {PATIENT_DATA['email_spoken']})")
-print(f"DOB: June 1, 2000 (say: June first two thousand)")
-print(f"Sex: Male")
-print(f"{'='*60}\n")

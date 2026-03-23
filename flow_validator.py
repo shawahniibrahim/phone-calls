@@ -2,7 +2,7 @@
 # Validates if a conversation flow met the expected criteria
 
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import json
 
@@ -10,9 +10,10 @@ import json
 class FlowAssertion:
     """Defines an assertion to validate against the flow"""
     step: int
-    assertion_type: str  # "contains", "matches", "not_contains", "step_reached"
-    expected_value: Optional[str] = None
+    assertion_type: str  # "contains", "contains_any", "matches", "not_contains", "step_reached"
+    expected_value: Optional[Any] = None
     description: str = ""
+    target: str = "either"
 
 @dataclass
 class FlowResult:
@@ -26,6 +27,15 @@ class FlowResult:
     failed_assertions: List[str]
     execution_time: float
     transcript: List[Dict[str, Any]]
+    assertion_results: List[Dict[str, Any]] = field(default_factory=list)
+    call_sid: Optional[str] = None
+    call_status: Optional[str] = None
+    conversation_file: Optional[str] = None
+    transcript_file: Optional[str] = None
+    recording_file: Optional[str] = None
+    report_json: Optional[str] = None
+    report_html: Optional[str] = None
+    timed_out: bool = False
     error: Optional[str] = None
 
 class FlowValidator:
@@ -61,9 +71,19 @@ class FlowValidator:
         assertions_passed = 0
         assertions_failed = 0
         failed_assertions = []
+        assertion_results = []
         
         for assertion in assertions:
             passed, message = self._check_assertion(assertion)
+            assertion_results.append({
+                "step": assertion.step,
+                "type": assertion.assertion_type,
+                "target": assertion.target,
+                "expected_value": assertion.expected_value,
+                "description": assertion.description,
+                "passed": passed,
+                "message": message,
+            })
             if passed:
                 assertions_passed += 1
             else:
@@ -82,7 +102,8 @@ class FlowValidator:
             assertions_failed=assertions_failed,
             failed_assertions=failed_assertions,
             execution_time=execution_time,
-            transcript=self.conversation_history.copy()
+            transcript=self.conversation_history.copy(),
+            assertion_results=assertion_results,
         )
     
     def _check_assertion(self, assertion: FlowAssertion) -> tuple[bool, str]:
@@ -102,32 +123,64 @@ class FlowValidator:
         if not exchange:
             return False, f"Step {assertion.step} not found - {assertion.description}"
         
-        # Combine both sides of conversation for checking
-        full_text = f"{exchange['clinic_said']} {exchange['we_said']}".lower()
-        expected = assertion.expected_value.lower() if assertion.expected_value else ""
+        text = self._get_assertion_text(exchange, assertion.target)
+        expected = (
+            assertion.expected_value.lower()
+            if isinstance(assertion.expected_value, str)
+            else assertion.expected_value
+        )
         
         if assertion.assertion_type == "contains":
-            if expected in full_text:
+            if expected and expected in text:
                 return True, f"Step {assertion.step} contains '{assertion.expected_value}'"
             else:
                 return False, f"Step {assertion.step} missing '{assertion.expected_value}' - {assertion.description}"
+
+        elif assertion.assertion_type == "contains_any":
+            candidates = self._normalize_expected_values(assertion.expected_value)
+            matched = next((candidate for candidate in candidates if candidate in text), None)
+            if matched:
+                return True, f"Step {assertion.step} contains one of {candidates} (matched '{matched}')"
+            return False, f"Step {assertion.step} missing all of {candidates} - {assertion.description}"
         
         elif assertion.assertion_type == "not_contains":
-            if expected not in full_text:
+            if not expected or expected not in text:
                 return True, f"Step {assertion.step} correctly doesn't contain '{assertion.expected_value}'"
             else:
                 return False, f"Step {assertion.step} incorrectly contains '{assertion.expected_value}' - {assertion.description}"
         
         elif assertion.assertion_type == "matches":
             # Fuzzy match - check if key words are present
-            keywords = expected.split()
-            matches = sum(1 for kw in keywords if kw in full_text)
+            keywords = self._normalize_expected_values(assertion.expected_value)
+            if not keywords:
+                return False, f"Step {assertion.step} has no pattern to match - {assertion.description}"
+            matches = sum(1 for kw in keywords if kw in text)
             if matches >= len(keywords) * 0.7:  # 70% of keywords must match
                 return True, f"Step {assertion.step} matches pattern"
             else:
                 return False, f"Step {assertion.step} doesn't match pattern '{assertion.expected_value}' - {assertion.description}"
         
         return False, f"Unknown assertion type: {assertion.assertion_type}"
+
+    def _get_assertion_text(self, exchange: Dict[str, Any], target: str) -> str:
+        clinic_text = exchange["clinic_said"].lower()
+        our_text = exchange["we_said"].lower()
+        if target == "clinic":
+            return clinic_text
+        if target in {"ours", "assistant", "caller"}:
+            return our_text
+        return f"{clinic_text} {our_text}".strip()
+
+    def _normalize_expected_values(self, expected_value: Any) -> List[str]:
+        if expected_value is None:
+            return []
+        if isinstance(expected_value, list):
+            return [str(item).lower() for item in expected_value if str(item).strip()]
+        if isinstance(expected_value, str):
+            if "|" in expected_value:
+                return [item.strip().lower() for item in expected_value.split("|") if item.strip()]
+            return [item.strip().lower() for item in expected_value.split() if item.strip()]
+        return [str(expected_value).lower()]
     
     def reset(self):
         """Reset the conversation history for a new flow"""
