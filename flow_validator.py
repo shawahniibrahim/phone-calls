@@ -14,6 +14,7 @@ class FlowAssertion:
     expected_value: Optional[Any] = None
     description: str = ""
     target: str = "either"
+    exchange_offset: int = 0
 
 @dataclass
 class FlowResult:
@@ -67,7 +68,10 @@ class FlowValidator:
         Returns:
             FlowResult with validation results
         """
-        steps_completed = len(self.conversation_history)
+        steps_completed = max(
+            (int(exchange.get("step", 0)) for exchange in self.conversation_history),
+            default=0,
+        )
         assertions_passed = 0
         assertions_failed = 0
         failed_assertions = []
@@ -77,6 +81,8 @@ class FlowValidator:
             passed, message = self._check_assertion(assertion)
             assertion_results.append({
                 "step": assertion.step,
+                "exchange_step": assertion.step + assertion.exchange_offset,
+                "exchange_offset": assertion.exchange_offset,
                 "type": assertion.assertion_type,
                 "target": assertion.target,
                 "expected_value": assertion.expected_value,
@@ -118,9 +124,12 @@ class FlowValidator:
                 return False, f"Step {assertion.step} not reached - {assertion.description}"
         
         # Find the exchange for this step
-        exchange = next((ex for ex in self.conversation_history if ex["step"] == assertion.step), None)
+        exchange_step = assertion.step + assertion.exchange_offset
+        exchange = next((ex for ex in self.conversation_history if ex["step"] == exchange_step), None)
         
         if not exchange:
+            if assertion.exchange_offset:
+                return False, f"Step {assertion.step} follow-up exchange not found - {assertion.description}"
             return False, f"Step {assertion.step} not found - {assertion.description}"
         
         text = self._get_assertion_text(exchange, assertion.target)
@@ -129,36 +138,41 @@ class FlowValidator:
             if isinstance(assertion.expected_value, str)
             else assertion.expected_value
         )
+        step_label = f"Step {assertion.step}"
+        if assertion.exchange_offset == 1:
+            step_label = f"Step {assertion.step} (next exchange)"
+        elif assertion.exchange_offset:
+            step_label = f"Step {assertion.step} (+{assertion.exchange_offset})"
         
         if assertion.assertion_type == "contains":
             if expected and expected in text:
-                return True, f"Step {assertion.step} contains '{assertion.expected_value}'"
+                return True, f"{step_label} contains '{assertion.expected_value}'"
             else:
-                return False, f"Step {assertion.step} missing '{assertion.expected_value}' - {assertion.description}"
+                return False, f"{step_label} missing '{assertion.expected_value}' - {assertion.description}"
 
         elif assertion.assertion_type == "contains_any":
             candidates = self._normalize_expected_values(assertion.expected_value)
             matched = next((candidate for candidate in candidates if candidate in text), None)
             if matched:
-                return True, f"Step {assertion.step} contains one of {candidates} (matched '{matched}')"
-            return False, f"Step {assertion.step} missing all of {candidates} - {assertion.description}"
+                return True, f"{step_label} contains one of {candidates} (matched '{matched}')"
+            return False, f"{step_label} missing all of {candidates} - {assertion.description}"
         
         elif assertion.assertion_type == "not_contains":
             if not expected or expected not in text:
-                return True, f"Step {assertion.step} correctly doesn't contain '{assertion.expected_value}'"
+                return True, f"{step_label} correctly doesn't contain '{assertion.expected_value}'"
             else:
-                return False, f"Step {assertion.step} incorrectly contains '{assertion.expected_value}' - {assertion.description}"
+                return False, f"{step_label} incorrectly contains '{assertion.expected_value}' - {assertion.description}"
         
         elif assertion.assertion_type == "matches":
             # Fuzzy match - check if key words are present
             keywords = self._normalize_expected_values(assertion.expected_value)
             if not keywords:
-                return False, f"Step {assertion.step} has no pattern to match - {assertion.description}"
+                return False, f"{step_label} has no pattern to match - {assertion.description}"
             matches = sum(1 for kw in keywords if kw in text)
             if matches >= len(keywords) * 0.7:  # 70% of keywords must match
-                return True, f"Step {assertion.step} matches pattern"
+                return True, f"{step_label} matches pattern"
             else:
-                return False, f"Step {assertion.step} doesn't match pattern '{assertion.expected_value}' - {assertion.description}"
+                return False, f"{step_label} doesn't match pattern '{assertion.expected_value}' - {assertion.description}"
         
         return False, f"Unknown assertion type: {assertion.assertion_type}"
 

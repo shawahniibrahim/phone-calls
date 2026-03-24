@@ -54,9 +54,11 @@ class FlowTestRunner:
                 print(f"{Fore.YELLOW}Warning: couldn't fetch call status yet: {exc}")
 
             exchanges = self._load_exchanges(conversation_file)
-            if exchanges and len(exchanges) >= expected_steps:
-                print(f"{Fore.GREEN}✓ Expected {expected_steps} steps reached, finishing early")
+            max_step_reached = self._max_step_reached(exchanges)
+            if max_step_reached >= expected_steps:
+                print(f"{Fore.GREEN}✓ Expected step {expected_steps} reached, finishing early")
                 await self._wait_for_file_flush(conversation_file)
+                last_status = await self._refresh_call_status(call_sid, last_status)
                 return last_status, False
 
             if last_status in TERMINAL_CALL_STATUSES:
@@ -69,6 +71,29 @@ class FlowTestRunner:
         print(f"{Fore.YELLOW}Timeout reached after {timeout}s")
         await self._wait_for_file_flush(conversation_file)
         return last_status, True
+
+    async def _refresh_call_status(
+        self,
+        call_sid: str,
+        current_status: str,
+        grace_seconds: int = 8,
+        poll_interval: int = 1,
+    ) -> str:
+        """Give Twilio a brief chance to move from in-progress to a terminal state."""
+        status = current_status
+        deadline = time.time() + grace_seconds
+
+        while time.time() < deadline and status not in TERMINAL_CALL_STATUSES:
+            await asyncio.sleep(poll_interval)
+            try:
+                latest_status = self.call_manager.get_call_status(call_sid)
+                if latest_status != status:
+                    print(f"{Fore.BLUE}Final call status: {latest_status}")
+                status = latest_status
+            except Exception as exc:
+                print(f"{Fore.YELLOW}Warning: couldn't refresh final call status: {exc}")
+
+        return status
 
     async def _wait_for_file_flush(self, conversation_file: str, grace_seconds: int = 5):
         """Give the server a brief chance to write artifacts after the call ends."""
@@ -85,6 +110,11 @@ class FlowTestRunner:
                 return json.load(f)
         except json.JSONDecodeError:
             return []
+
+    def _max_step_reached(self, exchanges: List[Dict[str, Any]]) -> int:
+        if not exchanges:
+            return 0
+        return max(int(exchange.get("step", 0)) for exchange in exchanges)
 
     def _recording_path_for_call(self, call_sid: str) -> str | None:
         if not call_sid:
@@ -141,13 +171,21 @@ class FlowTestRunner:
 
         def extend_assertions(raw_assertions, default_target: str | None = None):
             for assertion_dict in raw_assertions:
+                when = assertion_dict.get("when")
+                if when is None:
+                    when = assertion_dict.get("assert_on", "current_exchange")
+                when = str(when)
+                exchange_offset = assertion_dict.get("exchange_offset")
+                if exchange_offset is None:
+                    exchange_offset = 1 if when in {"next", "next_exchange"} else 0
                 assertions.append(
                     FlowAssertion(
                         step=step["step"],
-                        assertion_type=assertion_dict["type"],
+                        assertion_type=str(assertion_dict["type"]),
                         expected_value=assertion_dict.get("value"),
                         description=assertion_dict["description"],
-                        target=assertion_dict.get("target", default_target or "either"),
+                        target=str(assertion_dict.get("target", default_target or "either")),
+                        exchange_offset=exchange_offset,
                     )
                 )
 

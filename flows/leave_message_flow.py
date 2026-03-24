@@ -3,6 +3,7 @@ Leave Message Flow
 Tests the ability to leave a message with a medical clinic receptionist.
 """
 
+from flow_constants import ACTIONS, ASSERTIONS
 from prompt_builder import build_system_prompt
 
 FLOW = {
@@ -16,9 +17,9 @@ FLOW = {
             "respond_with": "Say you want to leave a message",
             "example": "I'd like to leave a message please",
             "assertions": [
-                {"type": "step_reached", "description": "Call connected"},
+                {"type": ASSERTIONS.STEP_REACHED, "description": "Call connected"},
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "message",
                     "description": "Requested to leave message",
                 },
@@ -31,7 +32,7 @@ FLOW = {
             "example": "Alex Kattan",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "alex kattan",
                     "description": "Name provided",
                 }
@@ -44,7 +45,7 @@ FLOW = {
             "example": "450-233-2096",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "450",
                     "description": "Phone number provided",
                 }
@@ -57,7 +58,7 @@ FLOW = {
             "example": "I need to follow up on my recent appointment",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "appointment",
                     "description": "Message content provided",
                 }
@@ -70,7 +71,7 @@ FLOW = {
             "example": "Thank you",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "thank",
                     "description": "Thanked for taking message",
                 }
@@ -81,9 +82,9 @@ FLOW = {
             "expect": "saying goodbye",
             "respond_with": "Say goodbye and hang up",
             "example": "Goodbye",
-            "action": "hangup",
+            "action": ACTIONS.HANGUP,
             "assertions": [
-                {"type": "step_reached", "description": "Call completed and hung up"}
+                {"type": ASSERTIONS.STEP_REACHED, "description": "Call completed and hung up"}
             ],
         },
     ],

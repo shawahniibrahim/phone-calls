@@ -12,11 +12,12 @@ Instructions:
 Each step represents one exchange:
 - `expect`: what the clinic says in that exchange
 - `respond_with` / `example`: what our caller says back in that same exchange
-- `clinic_assertions`: validations against `clinic_said`
-- `our_assertions`: validations against `we_said`
-- `assertions`: general validations like `step_reached`
+- `assertions`: validations for that business step
+  - use `target: TARGETS.CLINIC` or `target: TARGETS.OURS` to choose which side to check
+  - use `assert_on: ASSERT_ON.NEXT_EXCHANGE` if the assertion should validate the clinic's follow-up answer
 """
 
+from flow_constants import ACTIONS, ASSERTIONS, ASSERT_ON, TARGETS
 from prompt_builder import build_system_prompt
 
 FLOW = {
@@ -29,41 +30,40 @@ FLOW = {
             "expect": "what you expect the other party to say",
             "respond_with": "instruction for AI on how to respond",
             "example": "example of what the AI should say",
-            "clinic_assertions": [
+            "assertions": [
+                {"type": ASSERTIONS.STEP_REACHED, "description": "Step 1 completed"},
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "keyword from the clinic side",
                     "description": "Clinic said the expected thing",
+                    "target": TARGETS.CLINIC,
                 },
-            ],
-            "our_assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "keyword from our side",
                     "description": "Caller replied as expected",
+                    "target": TARGETS.OURS,
                 },
-            ],
-            "assertions": [
-                {"type": "step_reached", "description": "Step 1 exchange completed"},
             ],
         },
         {
             "step": 2,
-            "expect": "next expected response",
-            "respond_with": "how to respond",
-            "example": "example response",
-            "clinic_assertions": [
+            "expect": "the clinic answers the thing you just asked about",
+            "respond_with": "ask the next thing",
+            "example": "What are your working hours?",
+            "assertions": [
                 {
-                    "type": "contains",
-                    "value": "something from the clinic",
-                    "description": "Clinic-side validation",
+                    "type": ASSERTIONS.CONTAINS,
+                    "value": "working hours",
+                    "description": "Caller asked about working hours",
+                    "target": TARGETS.OURS,
                 },
-            ],
-            "our_assertions": [
                 {
-                    "type": "contains",
-                    "value": "something from us",
-                    "description": "Caller-side validation",
+                    "type": ASSERTIONS.MATCHES,
+                    "value": "monday friday 8 5",
+                    "description": "Clinic answered with working hours",
+                    "target": TARGETS.CLINIC,
+                    "assert_on": ASSERT_ON.NEXT_EXCHANGE,
                 },
             ],
         },
@@ -73,8 +73,8 @@ FLOW = {
             "expect": "goodbye",
             "respond_with": "Say goodbye",
             "example": "Goodbye",
-            "action": "hangup",  # This triggers automatic hangup
-            "assertions": [{"type": "step_reached", "description": "Call completed"}],
+            "action": ACTIONS.HANGUP,  # This triggers automatic hangup
+            "assertions": [{"type": ASSERTIONS.STEP_REACHED, "description": "Call completed"}],
         },
     ],
 }

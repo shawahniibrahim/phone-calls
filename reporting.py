@@ -34,10 +34,16 @@ def _render_assertion_rows(assertion_results):
     for assertion in assertion_results:
         status = "PASS" if assertion["passed"] else "FAIL"
         row_class = "pass" if assertion["passed"] else "fail"
+        when = "current"
+        if assertion.get("exchange_offset") == 1:
+            when = "next"
+        elif assertion.get("exchange_offset"):
+            when = f"+{assertion['exchange_offset']}"
         rows.append(
             "<tr class=\"{row_class}\">"
             "<td>{status}</td>"
             "<td>{step}</td>"
+            "<td>{when}</td>"
             "<td>{atype}</td>"
             "<td>{target}</td>"
             "<td>{desc}</td>"
@@ -47,6 +53,7 @@ def _render_assertion_rows(assertion_results):
                 row_class=row_class,
                 status=status,
                 step=escape(str(assertion["step"])),
+                when=escape(when),
                 atype=escape(str(assertion["type"])),
                 target=escape(str(assertion["target"])),
                 desc=escape(str(assertion["description"])),
@@ -271,6 +278,7 @@ def write_call_report(result, flow_config) -> tuple[str, str, str]:
         <tr>
           <th>Status</th>
           <th>Step</th>
+          <th>When</th>
           <th>Type</th>
           <th>Target</th>
           <th>Description</th>

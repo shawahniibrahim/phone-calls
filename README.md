@@ -79,6 +79,7 @@ In practice, flows should build `SYSTEM_PROMPT` from the shared prompt builder a
 Example:
 
 ```python
+from flow_constants import ASSERTIONS, TARGETS
 from prompt_builder import build_system_prompt
 
 FLOW = {
@@ -91,22 +92,20 @@ FLOW = {
             "expect": "greeting or asking how they can help",
             "respond_with": "Say you want to leave a message",
             "example": "I'd like to leave a message please",
-            "clinic_assertions": [
+            "assertions": [
+                {"type": ASSERTIONS.STEP_REACHED, "description": "Call connected"},
                 {
-                    "type": "contains_any",
+                    "type": ASSERTIONS.CONTAINS_ANY,
                     "value": ["how can i help", "help you today"],
                     "description": "Clinic asked how they can help",
-                }
-            ],
-            "our_assertions": [
+                    "target": TARGETS.CLINIC,
+                },
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "message",
                     "description": "Caller requested to leave a message",
-                }
-            ],
-            "assertions": [
-                {"type": "step_reached", "description": "Call connected"},
+                    "target": TARGETS.OURS,
+                },
             ],
         },
     ],
@@ -136,20 +135,32 @@ FLOW_ID = "leave_message"
 - `expect`: What the clinic is expected to say in that exchange
 - `respond_with`: Instruction for the AI's reply in that same exchange
 - `example`: Example wording for that reply
-- `clinic_assertions`: Optional validations against `clinic_said`
-- `our_assertions`: Optional validations against `we_said`
 - `action`: Optional special action such as `hangup`
-- `assertions`: Optional general validations for that exchange, such as `step_reached`
+- `assertions`: Optional validations for that business step
+  - use `target: TARGETS.CLINIC` or `target: TARGETS.OURS` to choose which side to check
+  - use `assert_on: ASSERT_ON.NEXT_EXCHANGE` if the assertion should validate the clinic's follow-up answer
+
+### Flow Constants
+
+- `ASSERTIONS.STEP_REACHED`
+- `ASSERTIONS.CONTAINS`
+- `ASSERTIONS.CONTAINS_ANY`
+- `ASSERTIONS.NOT_CONTAINS`
+- `ASSERTIONS.MATCHES`
+- `TARGETS.CLINIC`
+- `TARGETS.OURS`
+- `TARGETS.EITHER`
+- `ASSERT_ON.CURRENT_EXCHANGE`
+- `ASSERT_ON.NEXT_EXCHANGE`
+- `ACTIONS.HANGUP`
 
 ### Assertion Types
 
-- `step_reached`: Passes if the recorded conversation reached that step number
-- `contains`: Passes if the targeted text contains the expected value
-- `contains_any`: Passes if the targeted text contains at least one expected value
-- `not_contains`: Passes if the targeted text does not contain the expected value
-- `matches`: Fuzzy keyword check that currently requires about 70% keyword overlap
-
-If you use `clinic_assertions` or `our_assertions`, the target is implied automatically. Flat `assertions` can still be used for exchange-level checks or explicit `target` values.
+- `ASSERTIONS.STEP_REACHED`: Passes if the recorded conversation reached that step number.
+- `ASSERTIONS.CONTAINS`: Passes if the targeted text contains the expected value.
+- `ASSERTIONS.CONTAINS_ANY`: Passes if the targeted text contains at least one expected value.
+- `ASSERTIONS.NOT_CONTAINS`: Passes if the targeted text does not contain the expected value.
+- `ASSERTIONS.MATCHES`: Fuzzy keyword check that currently requires about 70% keyword overlap.
 
 ## Current Flows
 

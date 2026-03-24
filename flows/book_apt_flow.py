@@ -3,6 +3,7 @@ Book Appointment Flow
 Tests the ability to book a new medical appointment.
 """
 
+from flow_constants import ACTIONS, ASSERTIONS
 from prompt_builder import build_system_prompt
 
 FLOW = {
@@ -16,9 +17,9 @@ FLOW = {
             "respond_with": "Say you want to book an appointment",
             "example": "I'd like to book an appointment",
             "assertions": [
-                {"type": "step_reached", "description": "Call connected"},
+                {"type": ASSERTIONS.STEP_REACHED, "description": "Call connected"},
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "appointment",
                     "description": "Mentioned appointment",
                 },
@@ -31,7 +32,7 @@ FLOW = {
             "example": "John Smith",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "john smith",
                     "description": "Name provided",
                 }
@@ -44,7 +45,7 @@ FLOW = {
             "example": "January 15, 1990",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "january 15",
                     "description": "DOB provided",
                 }
@@ -57,7 +58,7 @@ FLOW = {
             "example": "Next Monday afternoon",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "monday",
                     "description": "Time preference provided",
                 }
@@ -70,7 +71,7 @@ FLOW = {
             "example": "Yes, that works for me",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "yes",
                     "description": "Appointment confirmed",
                 }
@@ -81,8 +82,8 @@ FLOW = {
             "expect": "saying goodbye",
             "respond_with": "Thank them and say goodbye",
             "example": "Thank you, goodbye",
-            "action": "hangup",
-            "assertions": [{"type": "step_reached", "description": "Call completed"}],
+            "action": ACTIONS.HANGUP,
+            "assertions": [{"type": ASSERTIONS.STEP_REACHED, "description": "Call completed"}],
         },
     ],
 }

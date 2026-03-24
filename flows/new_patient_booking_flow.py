@@ -6,6 +6,7 @@ Includes patient registration and appointment scheduling.
 
 import random
 
+from flow_constants import ACTIONS, ASSERTIONS
 from prompt_builder import build_system_prompt
 
 
@@ -72,9 +73,9 @@ FLOW = {
             "respond_with": "Say you want to book an appointment",
             "example": "I want to book an appointment",
             "assertions": [
-                {"type": "step_reached", "description": "Call connected and greeted"},
+                {"type": ASSERTIONS.STEP_REACHED, "description": "Call connected and greeted"},
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "book",
                     "description": "Requested to book appointment",
                 },
@@ -87,7 +88,7 @@ FLOW = {
             "example": "New patient",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "new",
                     "description": "Identified as new patient",
                 }
@@ -100,7 +101,7 @@ FLOW = {
             "example": PATIENT_DATA["full_name"],
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": PATIENT_DATA["first_name"].lower(),
                     "description": "Name provided",
                 }
@@ -113,7 +114,7 @@ FLOW = {
             "example": "June first two thousand",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "june",
                     "description": "Date of birth provided",
                 }
@@ -125,7 +126,7 @@ FLOW = {
             "respond_with": "Say Male",
             "example": "Male",
             "assertions": [
-                {"type": "contains", "value": "male", "description": "Sex provided"}
+                {"type": ASSERTIONS.CONTAINS, "value": "male", "description": "Sex provided"}
             ],
         },
         {
@@ -134,7 +135,7 @@ FLOW = {
             "respond_with": f"Provide phone number: {PATIENT_DATA['phone_spoken']}",
             "example": PATIENT_DATA["phone_spoken"],
             "assertions": [
-                {"type": "step_reached", "description": "Phone number provided"}
+                {"type": ASSERTIONS.STEP_REACHED, "description": "Phone number provided"}
             ],
         },
         {
@@ -143,7 +144,7 @@ FLOW = {
             "respond_with": f"Provide email: {PATIENT_DATA['email_spoken']}",
             "example": PATIENT_DATA["email_spoken"],
             "assertions": [
-                {"type": "contains", "value": "test", "description": "Email provided"}
+                {"type": ASSERTIONS.CONTAINS, "value": "test", "description": "Email provided"}
             ],
         },
         {
@@ -152,7 +153,7 @@ FLOW = {
             "respond_with": "Say no to skip insurance",
             "example": "No",
             "assertions": [
-                {"type": "contains", "value": "no", "description": "Declined insurance"}
+                {"type": ASSERTIONS.CONTAINS, "value": "no", "description": "Declined insurance"}
             ],
         },
         {
@@ -161,7 +162,7 @@ FLOW = {
             "respond_with": "Confirm you're still there if asked, otherwise wait",
             "example": "Yes, I'm here",
             "assertions": [
-                {"type": "step_reached", "description": "Waiting for appointment types"}
+                {"type": ASSERTIONS.STEP_REACHED, "description": "Waiting for appointment types"}
             ],
         },
         {
@@ -171,7 +172,7 @@ FLOW = {
             "example": "New patient",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "new patient",
                     "description": "Selected new patient appointment",
                 }
@@ -184,7 +185,7 @@ FLOW = {
             "example": "Tomorrow",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "tomorrow",
                     "description": "Requested tomorrow",
                 }
@@ -197,7 +198,7 @@ FLOW = {
             "example": "Go with the first option",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "first",
                     "description": "Selected first time slot",
                 }
@@ -210,7 +211,7 @@ FLOW = {
             "example": "Thank you, that's all",
             "assertions": [
                 {
-                    "type": "contains",
+                    "type": ASSERTIONS.CONTAINS,
                     "value": "thank",
                     "description": "Thanked and indicated completion",
                 }
@@ -221,9 +222,9 @@ FLOW = {
             "expect": "Saying goodbye",
             "respond_with": "Say goodbye",
             "example": "Goodbye",
-            "action": "hangup",
+            "action": ACTIONS.HANGUP,
             "assertions": [
-                {"type": "step_reached", "description": "Call completed successfully"}
+                {"type": ASSERTIONS.STEP_REACHED, "description": "Call completed successfully"}
             ],
         },
     ],

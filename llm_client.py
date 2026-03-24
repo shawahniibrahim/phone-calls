@@ -2,6 +2,7 @@ import io
 import wave
 import os
 import base64
+import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
@@ -48,6 +49,89 @@ class LLMClient:
             messages=conversation_history
         )
         return response.choices[0].message.content
+
+    async def choose_flow_step(
+        self,
+        *,
+        clinic_said: str,
+        flow_steps: list[dict],
+        next_expected_step: int,
+        recent_exchanges: list[dict],
+    ) -> dict:
+        """
+        Uses the model to choose which business flow step best matches the
+        clinic's latest utterance.
+        """
+        steps_summary = []
+        for index, step in enumerate(flow_steps, start=1):
+            action = f", action={step.get('action')}" if step.get("action") else ""
+            steps_summary.append(
+                f"{index}. expect={step['expect']} | respond_with={step['respond_with']} | "
+                f"example={step['example']}{action}"
+            )
+
+        history_summary = []
+        for exchange in recent_exchanges[-6:]:
+            history_summary.append(
+                f"- Step {exchange['step']}: clinic='{exchange['clinic_said']}' | caller='{exchange['we_said']}'"
+            )
+
+        prompt = f"""
+You are choosing which business flow step the caller should respond with right now.
+
+Important rules:
+- Flow steps are business steps, not raw transcript turns.
+- The clinic may repeat a question, ask "are you still there", or restate something already asked.
+- Do not advance just because the caller already answered once.
+- If the clinic repeats a prior request, choose that same step again.
+- If the clinic says a generic keepalive without introducing a new request, use the next expected unfinished step.
+- You may choose an earlier step than the next expected one if the clinic is clearly repeating or reconfirming old information.
+- Choose exactly one step number from the provided list.
+
+Next expected unfinished step: {next_expected_step}
+
+Flow steps:
+{chr(10).join(steps_summary)}
+
+Recent exchanges:
+{chr(10).join(history_summary) if history_summary else "- None yet"}
+
+Latest clinic utterance:
+{clinic_said}
+
+Return JSON only in this shape:
+{{"selected_step": 1, "reason": "short reason", "confidence": "low|medium|high"}}
+"""
+
+        response = await self.client.chat.completions.create(
+            model="gpt-4o",
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        content = response.choices[0].message.content
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            return {
+                "selected_step": next_expected_step,
+                "reason": "Fallback: step judge returned invalid JSON",
+                "confidence": "low",
+            }
+
+        selected_step = parsed.get("selected_step", next_expected_step)
+        try:
+            selected_step = int(selected_step)
+        except (TypeError, ValueError):
+            selected_step = next_expected_step
+
+        selected_step = max(1, min(selected_step, len(flow_steps)))
+        return {
+            "selected_step": selected_step,
+            "reason": str(parsed.get("reason", "")).strip(),
+            "confidence": str(parsed.get("confidence", "")).strip().lower() or "unknown",
+        }
 
     async def validate_response(self, actual_response: str, expected_context: str) -> bool:
         """

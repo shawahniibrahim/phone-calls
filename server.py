@@ -193,9 +193,14 @@ async def handle_media_stream(websocket: WebSocket):
                                     print(f"[US] Saying: {our_response}")
 
                                     # Record this exchange for validation
+                                    selected_step_number = (
+                                        ai_responder.last_step_number
+                                        if ai_responder is not None
+                                        else conversation_turn + 1
+                                    )
                                     conversation_exchanges.append(
                                         {
-                                            "step": conversation_turn + 1,
+                                            "step": selected_step_number,
                                             "clinic_said": clinic_text,
                                             "we_said": our_response,
                                             "timestamp": datetime.now().isoformat(),
@@ -227,11 +232,10 @@ async def handle_media_stream(websocket: WebSocket):
                                         break
 
                                     # Check if we've reached the hangup step in the flow
-                                    if conversation_turn < len(active_flow):
-                                        current_flow_step = active_flow[
-                                            conversation_turn
-                                        ]
-                                        if current_flow_step.get("action") == "hangup":
+                                    current_flow_step = (
+                                        ai_responder.last_flow_step if ai_responder else None
+                                    )
+                                    if current_flow_step and current_flow_step.get("action") == "hangup":
                                             print(
                                                 f"\n[FLOW COMPLETE] Reached hangup step, ending call..."
                                             )
